@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>暗号（復号）化 tool — AES-256-GCM / PBKDF2</title>
+<style>
+*{box-sizing:border-box;}
+:root{--bg:#0b1624;--card:#132339;--bd:#2a4360;--ac:#3ec6e0;--tx:#eef4fb;--dim:#a9c0d6;--ok:#3ecf8e;--ng:#ff6b6b;--wn:#ffb300;--in:#0d1c2c;}
+body{margin:0;background:linear-gradient(160deg,#0b1624,#152538 60%,#0d1a2a) fixed;color:var(--tx);font-family:'Helvetica Neue',Arial,'Hiragino Sans','Yu Gothic',sans-serif;font-size:14px;line-height:1.7;min-height:100vh;}
+.wrap{max-width:760px;margin:0 auto;padding:22px 16px 70px;}
+h1{font-size:21px;margin:6px 0 2px;}
+.sub{color:var(--dim);font-size:12.5px;margin-bottom:16px;}
+.tabs{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--bd);border-radius:10px;overflow:hidden;margin-bottom:16px;}
+.tab{background:var(--in);border:none;color:var(--dim);padding:12px;font-size:15px;cursor:pointer;font-weight:600;}
+.tab.active{background:#3b7dd8;color:#fff;}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px;margin-bottom:14px;}
+.card h2{font-size:14px;margin:0 0 10px;color:var(--ac);}
+label{display:block;font-size:12px;color:var(--dim);margin:10px 0 5px;}
+input[type=text],input[type=password],select{width:100%;background:var(--in);border:1px solid var(--bd);color:#fff;padding:10px;border-radius:8px;font-size:14px;font-family:inherit;}
+input[type=file]{display:none;}
+.drop{border:2px dashed var(--bd);border-radius:10px;padding:18px;text-align:center;color:var(--dim);cursor:pointer;}
+.drop.over{border-color:var(--ac);color:#fff;}
+.btn{background:#3b7dd8;border:none;color:#fff;border-radius:8px;padding:11px 18px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;}
+.btn.ghost{background:transparent;border:1px solid var(--bd);color:var(--dim);font-weight:400;padding:8px 14px;font-size:13px;}
+.btn:disabled{opacity:.5;cursor:default;}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;}
+.row > *{flex:0 0 auto;}
+.grow{flex:1 1 200px !important;}
+.msg{font-size:12.5px;margin-top:8px;white-space:pre-wrap;}
+.dim{color:var(--dim);} .ok{color:var(--ok);} .ng{color:var(--ng);} .wn{color:var(--wn);}
+.list{margin-top:10px;font-size:12.5px;}
+.item{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid rgba(42,67,96,.5);word-break:break-all;}
+.item:last-child{border-bottom:none;}
+.item .st{flex:0 0 auto;text-align:right;max-width:55%;}
+.meter{height:6px;border-radius:3px;background:var(--in);margin-top:6px;overflow:hidden;}
+.meter i{display:block;height:100%;width:0;background:var(--ng);transition:width .2s,background .2s;}
+.pass{font-family:'Courier New',monospace;letter-spacing:.05em;}
+.radio{display:flex;gap:16px;flex-wrap:wrap;margin:4px 0 6px;}
+.radio label{display:flex;gap:6px;align-items:center;margin:0;color:var(--tx);font-size:14px;cursor:pointer;}
+.chk{display:flex;gap:8px;align-items:flex-start;margin:8px 0;color:var(--tx);font-size:13px;cursor:pointer;}
+.chk input{margin-top:5px;}
+.info{font-size:12.5px;color:var(--dim);}
+.info b{color:var(--tx);}
+.hide{display:none !important;}
+code{background:var(--in);padding:1px 5px;border-radius:4px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>暗号（復号）化 tool</h1>
+  <div class="sub">AES-256-GCM ／ 鍵導出 PBKDF2-HMAC-SHA256（60万回）。すべてお使いのブラウザの中だけで処理します（ファイルもパスフレーズも外部へ送信しません）。</div>
+
+  <div class="tabs">
+    <button class="tab active" id="tabEnc" type="button">🔒 暗号化</button>
+    <button class="tab" id="tabDec" type="button">🔓 復号</button>
+  </div>
+
+  <div class="card">
+    <h2>① ファイルを選ぶ</h2>
+    <div class="drop" id="drop">ここにファイルをドロップ、またはクリックして選択（複数可）</div>
+    <input type="file" id="fileIn" multiple>
+    <div class="list" id="fileList"></div>
+  </div>
+
+  <div class="card" id="encPass">
+    <h2>② パスフレーズ（暗号化）</h2>
+    <div class="radio">
+      <label><input type="radio" name="pm" value="auto" checked> 自動生成（おすすめ）</label>
+      <label><input type="radio" name="pm" value="manual"> 自分で入力</label>
+    </div>
+
+    <div id="autoBox">
+      <label for="lenSel">桁数（文字数）</label>
+      <select id="lenSel">
+        <option value="12">12 桁</option>
+        <option value="16">16 桁</option>
+        <option value="20" selected>20 桁</option>
+        <option value="24">24 桁</option>
+        <option value="32">32 桁</option>
+      </select>
+      <div class="row">
+        <input type="text" id="genOut" class="pass grow" readonly placeholder="「生成」を押してください">
+        <button class="btn ghost" id="genBtn" type="button">生成</button>
+        <button class="btn ghost" id="copyBtn" type="button">コピー</button>
+      </div>
+      <label class="chk"><input type="checkbox" id="savedChk"> <span>このパスフレーズを控えました（紛失すると、暗号化したファイルは二度と開けません）</span></label>
+    </div>
+
+    <div id="manualBox" class="hide">
+      <label for="pass1">パスフレーズ（12文字以上、16文字以上を推奨）</label>
+      <input type="password" id="pass1" autocomplete="new-password">
+      <label for="pass2">パスフレーズ（確認）</label>
+      <input type="password" id="pass2" autocomplete="new-password">
+    </div>
+
+    <div class="meter"><i id="meterBar"></i></div>
+    <div class="msg dim" id="strength"></div>
+    <div class="info" style="margin-top:6px">鍵：パスフレーズ → PBKDF2-HMAC-SHA256（600,000回）→ <b>256bit の鍵（桁数に関係なく固定）</b></div>
+  </div>
+
+  <div class="card hide" id="decPass">
+    <h2>② パスフレーズ（復号）</h2>
+    <label for="pass3">暗号化したときのパスフレーズ</label>
+    <input type="password" id="pass3" autocomplete="off">
+  </div>
+
+  <div class="card">
+    <h2>③ 保存先</h2>
+    <div class="row">
+      <button class="btn ghost" id="dirBtn" type="button">保存先フォルダを選ぶ</button>
+      <span id="dirName" class="dim"></span>
+    </div>
+    <div class="msg dim" id="dirNote"></div>
+  </div>
+
+  <div class="card">
+    <h2>④ 実行</h2>
+    <div id="encOpts">
+      <label class="chk"><input type="checkbox" id="optHide"> <span>ファイル名を隠す（保存名を <code>encrypted-xxxxxxxx.enc</code> にし、元の名前は暗号化して中に格納）</span></label>
+      <label class="chk"><input type="checkbox" id="optVerify" checked> <span>保存後に検算する（保存したファイルを復号して、元と一致するか確認）</span></label>
+    </div>
+    <div class="msg" id="checks"></div>
+    <div class="row"><button class="btn" id="runBtn" type="button">暗号化して保存</button></div>
+    <div class="msg" id="runMsg"></div>
+    <div class="list" id="results"></div>
+  </div>
+
+  <div class="card info">
+    <h2>しくみと注意</h2>
+    ・<b>パスフレーズの桁数</b>：鍵そのものは、フレーズが何桁でも必ず256bitです。桁数が影響するのは<b>「当てられにくさ」</b>です。4桁・8桁のような短いフレーズは、鍵が256bitでも短時間で総当たりされるため、選べないようにしています（最小12桁）。<br>
+    ・暗号化ファイル（<code>.enc</code>）は、パスフレーズがなければ開けません。パスフレーズは保存されず、復元もできません。<br>
+    ・1ファイルごとに、ランダムなsalt（鍵の種）とnonce（使い捨ての値）を使います。改ざん・途中欠けは、復号時に検出されます。<br>
+    ・保存先フォルダの指定は、PC版の Chrome / Edge で使えます。それ以外のブラウザでは、ダウンロードフォルダに保存されます。
+  </div>
+</div>
+<script>
+/*CORE-START*/
+const MAGIC = new TextEncoder().encode('UENC0001');   // ファイル識別子（8バイト）
+const DEF_CHUNK = 1 << 20;                            // 1MiB ごとに暗号化
+const DEF_ITER = 600000;                              // PBKDF2 の反復回数
+const TAG = 16, HDR = 44;                             // 認証タグ長／ヘッダ長
+// ヘッダ：MAGIC(8) + iter(4) + chunk(4) + metaLen(4) + salt(16) + nonce(8) = 44 バイト
+
+function cat() { let n = 0; for (const a of arguments) n += a.length; const o = new Uint8Array(n); let p = 0; for (const a of arguments) { o.set(a, p); p += a.length; } return o; }
+function be32(n) { const b = new Uint8Array(4); new DataView(b.buffer).setUint32(0, n >>> 0, false); return b; }
+function rd32(b, o) { return new DataView(b.buffer, b.byteOffset, b.byteLength).getUint32(o, false); }
+function ivOf(nonce, counter) { const iv = new Uint8Array(12); iv.set(nonce, 0); new DataView(iv.buffer).setUint32(8, counter >>> 0, false); return iv; }
+
+async function keyFrom(pass, salt, iter, usage) {
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pass.normalize('NFKC')), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, usage);
+}
+function aadOf(header, last) { return cat(header, new Uint8Array([last ? 1 : 0])); }
+async function sealChunk(key, header, nonce, counter, last, plain) {
+  return new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: ivOf(nonce, counter), additionalData: aadOf(header, last), tagLength: 128 }, key, plain));
+}
+async function openChunk(key, header, nonce, counter, last, ct) {
+  return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: ivOf(nonce, counter), additionalData: aadOf(header, last), tagLength: 128 }, key, ct));
+}
+
+/* 暗号化：file(Blob/File) → sink.write(Uint8Array) へ順に書き出す */
+async function encryptFile(file, pass, sink, o) {
+  o = o || {};
+  const chunk = o.chunk || DEF_CHUNK, iter = o.iter || DEF_ITER;
+  const salt = crypto.getRandomValues(new Uint8Array(16)), nonce = crypto.getRandomValues(new Uint8Array(8));
+  const name = (o.name !== undefined ? o.name : file.name) || '';
+  const meta = new TextEncoder().encode(JSON.stringify({ n: name, s: file.size, t: file.lastModified || 0 }));
+  const header = cat(MAGIC, be32(iter), be32(chunk), be32(meta.length), salt, nonce);
+  const key = await keyFrom(pass, salt, iter, ['encrypt']);
+  await sink.write(header);
+  await sink.write(await sealChunk(key, header, nonce, 0, false, meta));     // 0番：元のファイル情報（暗号化）
+  const size = file.size;
+  let off = 0, c = 1;
+  do {
+    const end = Math.min(off + chunk, size);
+    const buf = new Uint8Array(await file.slice(off, end).arrayBuffer());
+    const last = end >= size;                                                // 最後のかたまりに印を付ける（途中欠けの検出）
+    await sink.write(await sealChunk(key, header, nonce, c++, last, buf));
+    off = end;
+    if (o.onProgress) o.onProgress(size ? off / size : 1);
+  } while (off < size);
+}
+
+/* 復号：blob(Blob/File)。meta を読めたら makeSink(meta) で出力先を作り、順に書き出す */
+async function decryptBlob(blob, pass, makeSink, o) {
+  o = o || {};
+  if (blob.size < HDR + TAG * 2) throw new Error('NOT_ENC');
+  const header = new Uint8Array(await blob.slice(0, HDR).arrayBuffer());
+  for (let i = 0; i < 8; i++) if (header[i] !== MAGIC[i]) throw new Error('NOT_ENC');
+  const iter = rd32(header, 8), chunk = rd32(header, 12), metaLen = rd32(header, 16);
+  if (iter < 1000 || iter > 50000000 || chunk < 1 || chunk > (64 << 20) || metaLen > (1 << 20)) throw new Error('NOT_ENC');
+  const salt = header.slice(20, 36), nonce = header.slice(36, 44);
+  const key = await keyFrom(pass, salt, iter, ['decrypt']);
+  let pos = HDR, meta;
+  try {
+    const mct = new Uint8Array(await blob.slice(pos, pos + metaLen + TAG).arrayBuffer());
+    pos += metaLen + TAG;
+    meta = JSON.parse(new TextDecoder().decode(await openChunk(key, header, nonce, 0, false, mct)));
+  } catch (e) { throw new Error('BAD_PASS'); }
+  const sink = await makeSink(meta);
+  try {
+    if (blob.size - pos < TAG) throw new Error('CORRUPT');
+    let c = 1, total = 0;
+    while (pos < blob.size) {
+      const len = Math.min(chunk + TAG, blob.size - pos);
+      const last = (pos + len >= blob.size);
+      const ct = new Uint8Array(await blob.slice(pos, pos + len).arrayBuffer());
+      let plain;
+      try { plain = await openChunk(key, header, nonce, c++, last, ct); } catch (e) { throw new Error('CORRUPT'); }
+      total += plain.length;
+      await sink.write(plain);
+      pos += len;
+      if (o.onProgress) o.onProgress(pos / blob.size);
+    }
+    if (total !== meta.s) throw new Error('CORRUPT');
+    await sink.close();
+  } catch (e) { try { await sink.abort(); } catch (x) {} throw e; }
+  return meta;
+}
+/*CORE-END*/
+
+/* ====================== 画面ロジック ====================== */
+const $ = id => document.getElementById(id);
+const FS_OK = typeof window.showDirectoryPicker === 'function';
+const ALPH = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';   // 紛らわしい文字(0,O,1,l,I)を除いた56文字
+let mode = 'enc', files = [], dirHandle = null, busy = false;
+
+function genPass(n) {
+  const lim = 256 - (256 % ALPH.length);                    // 偏りが出ないよう、範囲外の値は捨てる
+  let out = '';
+  while (out.length < n) {
+    const b = crypto.getRandomValues(new Uint8Array(n * 2));
+    for (const x of b) { if (x < lim) { out += ALPH[x % ALPH.length]; if (out.length === n) break; } }
+  }
+  return out;
+}
+function fmtSize(n) { return n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : n < 1073741824 ? (n / 1048576).toFixed(1) + ' MB' : (n / 1073741824).toFixed(2) + ' GB'; }
+function fmtYears(y) {
+  if (y < 1) return '1年未満';
+  if (y < 1e4) return '約 ' + Math.round(y).toLocaleString() + ' 年';
+  if (y < 1e8) return '約 ' + Math.round(y / 1e4).toLocaleString() + ' 万年';
+  if (y < 1e12) return '約 ' + (y / 1e8).toFixed(1) + ' 億年';
+  if (y < 1e16) return '約 ' + (y / 1e12).toFixed(1) + ' 兆年';
+  return '約 10^' + Math.floor(Math.log10(y)) + ' 年';
+}
+function bitsOfManual(p) {
+  let pool = 0;
+  if (/[a-z]/.test(p)) pool += 26; if (/[A-Z]/.test(p)) pool += 26; if (/[0-9]/.test(p)) pool += 10; if (/[^A-Za-z0-9]/.test(p)) pool += 33;
+  return p.length * Math.log2(pool || 1);
+}
+function strengthText(bits) {
+  const label = bits < 56 ? '弱い（推奨しません）' : bits < 72 ? '実用上十分' : bits < 100 ? '強い' : '非常に強い';
+  // 1秒に1千万回（GPU約1,000枚分）の総当たりを仮定した、平均的な解読時間の目安
+  const years = Math.pow(2, bits - 1) / 1e7 / 3.156e7;
+  return { label: label, text: '強度の目安：約 ' + Math.round(bits) + ' bit（' + label + '）／ 解読にかかる時間の目安 ' + fmtYears(years) + '（毎秒1千万回の総当たりを仮定）' };
+}
+function passMode() { return document.querySelector('input[name=pm]:checked').value; }
+function currentPass() { return mode === 'dec' ? $('pass3').value : (passMode() === 'auto' ? $('genOut').value : $('pass1').value); }
+
+/* ---------- 状態表示 ---------- */
+function checkState() {
+  const items = [];
+  items.push({ ok: files.length > 0, text: files.length > 0 ? 'ファイル：' + files.length + ' 個を選択済み' : 'ファイルが未選択です（①）' });
+  if (mode === 'enc') {
+    if (passMode() === 'auto') {
+      const has = !!$('genOut').value;
+      items.push({ ok: has, text: has ? 'パスフレーズを生成済み（' + $('genOut').value.length + ' 桁）' : 'パスフレーズが未生成です（②「生成」を押す）' });
+      items.push({ ok: has && $('savedChk').checked, text: $('savedChk').checked ? 'パスフレーズを控えた' : 'パスフレーズを控えたことのチェックが必要です（②）' });
+    } else {
+      const p1 = $('pass1').value, p2 = $('pass2').value;
+      items.push({ ok: p1.length >= 12, text: p1.length >= 12 ? 'パスフレーズは12文字以上（' + p1.length + ' 文字）' : 'パスフレーズが12文字未満です（現在 ' + p1.length + ' 文字）' });
+      items.push({ ok: p2.length > 0 && p1 === p2, text: (p2.length > 0 && p1 === p2) ? '確認用と一致' : '確認用のパスフレーズが一致していません' });
+    }
+  } else {
+    items.push({ ok: $('pass3').value.length > 0, text: $('pass3').value.length > 0 ? 'パスフレーズを入力済み' : 'パスフレーズが未入力です（②）' });
+  }
+  return { items: items, ok: items.every(i => i.ok) };
+}
+function refresh() {
+  $('tabEnc').classList.toggle('active', mode === 'enc');
+  $('tabDec').classList.toggle('active', mode === 'dec');
+  $('encPass').classList.toggle('hide', mode !== 'enc');
+  $('decPass').classList.toggle('hide', mode !== 'dec');
+  $('encOpts').classList.toggle('hide', mode !== 'enc');
+  $('autoBox').classList.toggle('hide', passMode() !== 'auto');
+  $('manualBox').classList.toggle('hide', passMode() !== 'manual');
+  $('runBtn').textContent = mode === 'enc' ? '暗号化して保存' : '復号して保存';
+  $('fileIn').accept = mode === 'dec' ? '.enc' : '';
+  // 強度
+  const p = passMode() === 'auto' ? $('genOut').value : $('pass1').value;
+  const bits = passMode() === 'auto' ? p.length * Math.log2(ALPH.length) : bitsOfManual(p);
+  if (mode === 'enc' && p.length) {
+    const s = strengthText(bits);
+    $('strength').textContent = s.text;
+    $('strength').className = 'msg ' + (bits < 56 ? 'ng' : bits < 72 ? 'wn' : 'ok');
+    $('meterBar').style.width = Math.min(100, bits / 120 * 100) + '%';
+    $('meterBar').style.background = bits < 56 ? '#ff6b6b' : bits < 72 ? '#ffb300' : '#3ecf8e';
+  } else { $('strength').textContent = ''; $('meterBar').style.width = '0'; }
+  // 保存先
+  $('dirBtn').classList.toggle('hide', !FS_OK);
+  $('dirName').textContent = dirHandle ? '📁 ' + dirHandle.name : '';
+  $('dirNote').textContent = FS_OK
+    ? (dirHandle ? '選んだフォルダに保存します（同名ファイルがあるときは (1) を付けて保存）。' : 'フォルダを選ばない場合は、ダウンロードフォルダに保存されます。')
+    : 'このブラウザではフォルダを指定できません。ブラウザのダウンロード先に保存されます（PC版の Chrome / Edge ならフォルダを指定できます）。';
+  // チェックリスト
+  const st = checkState();
+  $('checks').innerHTML = st.items.map(i => '<div class="' + (i.ok ? 'ok' : 'ng') + '">' + (i.ok ? '✓ ' : '✗ ') + i.text + '</div>').join('');
+  // ファイル一覧
+  $('fileList').innerHTML = files.map((f, i) => '<div class="item"><span>' + esc(f.name) + '</span><span class="st dim">' + fmtSize(f.size) + '</span></div>').join('');
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+/* ---------- 保存先（フォルダ指定 or ダウンロード） ---------- */
+function sanitizeName(s) {
+  s = String(s || '').replace(/[\\\/:*?"<>|\u0000-\u001f]/g, '_').trim().slice(0, 200);
+  return (!s || s === '.' || s === '..') ? 'decrypted-file' : s;
+}
+async function uniqueFile(dir, name) {
+  const dot = name.lastIndexOf('.');
+  const base = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+  let n = name, i = 0;
+  for (;;) { try { await dir.getFileHandle(n); } catch (e) { break; } i++; n = base + ' (' + i + ')' + ext; }
+  return { handle: await dir.getFileHandle(n, { create: true }), name: n };
+}
+async function openSink(name) {
+  if (dirHandle) {
+    const u = await uniqueFile(dirHandle, sanitizeName(name));
+    const w = await u.handle.createWritable();
+    return {
+      name: u.name,
+      write: b => w.write(b),
+      close: () => w.close(),
+      abort: async () => { try { await w.abort(); } catch (e) {} try { await dirHandle.removeEntry(u.name); } catch (e) {} },
+      getBlob: () => u.handle.getFile(),
+      finish: async () => {},
+      remove: async () => { try { await dirHandle.removeEntry(u.name); } catch (e) {} }
+    };
+  }
+  const parts = [], fname = sanitizeName(name);
+  return {
+    name: fname,
+    write: async b => { parts.push(b); },
+    close: async () => {},
+    abort: async () => { parts.length = 0; },
+    getBlob: async () => new Blob(parts),
+    finish: async () => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob(parts, { type: 'application/octet-stream' }));
+      a.download = fname; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    },
+    remove: async () => { parts.length = 0; }
+  };
+}
+
+/* ---------- 検算：保存した暗号化ファイルを復号し、元ファイルと突き合わせる ---------- */
+async function verifyEncrypted(blob, pass, src, onProgress) {
+  let off = 0;
+  await decryptBlob(blob, pass, async () => ({
+    async write(u8) {
+      const s = new Uint8Array(await src.slice(off, off + u8.length).arrayBuffer());
+      if (s.length !== u8.length) throw new Error('VERIFY');
+      for (let i = 0; i < u8.length; i++) if (s[i] !== u8[i]) throw new Error('VERIFY');
+      off += u8.length;
+    },
+    async close() {}, async abort() {}
+  }), { onProgress: onProgress });
+  if (off !== src.size) throw new Error('VERIFY');
+}
+
+function errText(e) {
+  const m = e && e.message;
+  if (m === 'BAD_PASS') return 'パスフレーズが違う、または暗号化ファイルが壊れています';
+  if (m === 'NOT_ENC') return 'このツールで暗号化したファイルではありません';
+  if (m === 'CORRUPT') return 'ファイルが壊れている（途中が欠けている）ため復号できません';
+  if (m === 'VERIFY') return '検算で元のファイルと一致しませんでした（保存したファイルは削除しました）';
+  return '失敗：' + (m || e);
+}
+
+/* ---------- 実行 ---------- */
+async function run() {
+  const st = checkState();
+  const msg = $('runMsg');
+  if (busy) return;
+  if (!st.ok) { msg.className = 'msg ng'; msg.textContent = '次の項目を確認してください：\n' + st.items.filter(i => !i.ok).map(i => '・' + i.text).join('\n'); return; }
+  busy = true; $('runBtn').disabled = true; msg.className = 'msg dim'; msg.textContent = '';
+  const pass = currentPass(), verify = $('optVerify').checked, hide = $('optHide').checked;
+  const list = files.slice();
+  $('results').innerHTML = list.map((f, i) => '<div class="item"><span>' + esc(f.name) + '</span><span class="st dim" id="st' + i + '">待機中</span></div>').join('');
+  let okN = 0;
+  for (let i = 0; i < list.length; i++) {
+    const f = list[i], el = $('st' + i);
+    const prog = (p, label) => { el.className = 'st dim'; el.textContent = label + ' ' + Math.round(p * 100) + '%'; };
+    try {
+      if (mode === 'enc') {
+        const outName = hide ? 'encrypted-' + Array.from(crypto.getRandomValues(new Uint8Array(4))).map(b => b.toString(16).padStart(2, '0')).join('') + '.enc' : f.name + '.enc';
+        const sink = await openSink(outName);
+        try { await encryptFile(f, pass, sink, { name: f.name, onProgress: p => prog(p * (verify ? 0.7 : 1), '暗号化中') }); await sink.close(); }
+        catch (e) { await sink.abort(); throw e; }
+        if (verify) {
+          el.textContent = '検算中…';
+          try { await verifyEncrypted(await sink.getBlob(), pass, f, p => prog(0.7 + p * 0.3, '検算中')); }
+          catch (e) { await sink.remove(); throw e; }
+        }
+        await sink.finish();
+        el.className = 'st ok'; el.textContent = '✓ 保存：' + sink.name + (verify ? '（検算OK）' : '');
+      } else {
+        let sink = null;
+        await decryptBlob(f, pass, async meta => { sink = await openSink(meta.n); return sink; }, { onProgress: p => prog(p, '復号中') });
+        await sink.finish();
+        el.className = 'st ok'; el.textContent = '✓ 保存：' + sink.name;
+      }
+      okN++;
+    } catch (e) { el.className = 'st ng'; el.textContent = '✗ ' + errText(e); }
+  }
+  busy = false; $('runBtn').disabled = false;
+  msg.className = 'msg ' + (okN === list.length ? 'ok' : 'ng');
+  msg.textContent = okN === list.length ? '完了：' + okN + ' 個を処理しました。' : '完了：' + okN + ' 個成功 ／ ' + (list.length - okN) + ' 個失敗';
+}
+
+/* ---------- イベント ---------- */
+function setFiles(fl) { files = Array.from(fl || []); refresh(); }
+$('drop').addEventListener('click', () => $('fileIn').click());
+$('fileIn').addEventListener('change', e => setFiles(e.target.files));
+['dragover', 'dragenter'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+['dragleave', 'drop'].forEach(t => $('drop').addEventListener(t, e => { e.preventDefault(); $('drop').classList.remove('over'); }));
+$('drop').addEventListener('drop', e => setFiles(e.dataTransfer.files));
+$('tabEnc').addEventListener('click', () => { mode = 'enc'; setFiles([]); $('results').innerHTML = ''; $('runMsg').textContent = ''; });
+$('tabDec').addEventListener('click', () => { mode = 'dec'; setFiles([]); $('results').innerHTML = ''; $('runMsg').textContent = ''; });
+document.querySelectorAll('input[name=pm]').forEach(r => r.addEventListener('change', refresh));
+$('genBtn').addEventListener('click', () => { $('genOut').value = genPass(parseInt($('lenSel').value, 10)); $('savedChk').checked = false; refresh(); });
+$('lenSel').addEventListener('change', () => { if ($('genOut').value) { $('genOut').value = genPass(parseInt($('lenSel').value, 10)); $('savedChk').checked = false; } refresh(); });
+$('copyBtn').addEventListener('click', async () => {
+  const v = $('genOut').value; if (!v) return;
+  try { await navigator.clipboard.writeText(v); $('copyBtn').textContent = 'コピーしました'; } catch (e) { $('genOut').select(); document.execCommand && document.execCommand('copy'); $('copyBtn').textContent = 'コピーしました'; }
+  setTimeout(() => $('copyBtn').textContent = 'コピー', 1500);
+});
+['pass1', 'pass2', 'pass3'].forEach(id => $(id).addEventListener('input', refresh));
+$('savedChk').addEventListener('change', refresh);
+$('dirBtn').addEventListener('click', async () => {
+  try { dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch (e) { /* キャンセル */ }
+  refresh();
+});
+$('runBtn').addEventListener('click', run);
+refresh();
+</script>
+</body>
+</html>
